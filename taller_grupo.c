@@ -18,31 +18,40 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+/*Método para la lectura de los archivos conteniendo los arreglos*/
 int leerArchivo(const char *archivo, int N, int **salida) {
+
+	/*Alerta si la cantidad de datos prevista es 0*/
 	if (N == 0) {
 		printf("\nAlerta de arreglo vacío en archivo '%s'\n", archivo);
 		*salida = NULL;
 		return 0;
 	}
 
+	/*Apertura del archivo en modo lectura*/
 	FILE *f = fopen(archivo, "r");
 	if (!f) {
 		printf("\nNo se encuentra el archivo con el nombre \"%s\"\n\n", archivo);
 		return 0;
 	}
 
+	/*Reserva del espacio para el arreglo*/
 	int *arreglo = malloc(N * sizeof(int));
+
+	/*Error en la reserva del espacio*/
 	if (!arreglo) {
 		printf("\nNo se pudo inicializar el arreglo del primer archivo\n");
 		fclose(f);
 		return 0;
 	}
 
+	/*Lectura de los contenidos del archivo*/
 	size_t i = 0;
 	while (i < N && fscanf(f, "%d", &arreglo[i]) == 1) {
 		i++;
 	}
 
+	/*En caso de obtener un error durante la lectura del archivo, se almacena y se trata acá*/
 	if (ferror(f)) {
 		fprintf(stderr, "\nError al leer el archivo: %s\n", archivo);
 		free(arreglo);
@@ -50,16 +59,18 @@ int leerArchivo(const char *archivo, int N, int **salida) {
 		return 0;
 	}
 
-	fclose(f);
-	*salida = arreglo;
+	fclose(f);/*Se cierra el canal con el archivo*/
+	*salida = arreglo;/*Se asigna el espacio del vector a la variable dada como parametro*/
 	return 1;
 }
 
 /*Método de "toString" de los arreglos para ser impresos en consola*/
 void imprimirArreglo(int *arr, int N) {
 	if (arr == NULL) {
+		/*Salida si el arreglo se encuentra vacío*/
 		printf("\nArreglo Vacío\n");
 	} else {
+		/*Recorrido del arreglo para imprimir cada elemento*/
 		printf("\nArreglo de tamaño %d:\n", N);
 		for (int i = 0; i < N; i++) {
 			char c = i == N - 1 ? ' ' : ',';
@@ -153,6 +164,7 @@ int main(char argc, char *argv[]) {
 		close(fd[0]); /*Cerrar lectura*/
 		write(fd[1], &sumaT, sizeof(sumaT));/*Escribir resultado*/
 		close(fd[1]); /*Cerrar escritura*/
+
 		/*Creación segundo hijo*/
 		pid_hijo = fork();
 		if(pid_hijo == -1) {
@@ -181,12 +193,28 @@ int main(char argc, char *argv[]) {
 		}
 		printf("\nSuma B = %d\n", sumaB);
 
+		/*Envio de mensaje al padre*/
+
+		close(fd[0]); /*Cerrar lectura*/
+		write(fd[1], &sumaB, sizeof(sumaB));/*Escribir resultado*/
+		close(fd[1]); /*Cerrar escritura*/
 		/*Creación grand hijo*/
 		pid_hijo = fork();
 		if(pid_hijo == -1) {
 			perror("FORK");
 			exit(EXIT_FAILURE);
 		}
+
+		if (pid_hijo != 0) return 0;
+	} else {
+		int resultado;
+		/*Recepción del mensaje en el padre*/
+
+		close(fd[1]);/*Cerrar escritura*/
+		read(fd[0], &resultado, sizeof(resultado));/*Escribir resultado*/
+		close(fd[0]); /*Cerrar lectura*/
+
+		printf("\nResultado Suma B: %d", resultado);
 	}
 
 	//Grand hijo (suma A de archivo01)
@@ -196,9 +224,25 @@ int main(char argc, char *argv[]) {
 		for (j = 0; j < N1; j++) {
 			sumaA += arreglo1[j];
 		}
-		printf("\nSuma A = %d\n", sumaA);
+
+		/*Envio de mensaje al padre*/
+
+		close(fd[0]); /*Cerrar lectura*/
+		write(fd[1], &sumaA, sizeof(sumaA));/*Escribir resultado*/
+		close(fd[1]); /*Cerrar escritura*/
+
+		return 0;
+	} else {
+		int resultado;
+		/*Recepción del mensaje en el padre*/
+
+		close(fd[1]);/*Cerrar escritura*/
+		read(fd[0], &resultado, sizeof(resultado));/*Escribir resultado*/
+		close(fd[0]); /*Cerrar lectura*/
+
+		printf("\nResultado Suma A: %d", resultado);
 	}
 
-	printf("\nPID: %d\n", pid_hijo);
+	//printf("\nPID: %d\n", pid_hijo);
 	return 1;
 }
