@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 /*Método para la lectura de los archivos conteniendo los arreglos*/
 int leerArchivo(const char *archivo, int N, int **salida) {
@@ -81,6 +82,11 @@ void imprimirArreglo(int *arr, int N) {
 }
 
 int main(char argc, char *argv[]) {
+	if (argc < 5) {
+	        fprintf(stderr, "Uso: %s N1 archivo00 N2 archivo01\n", argv[0]);
+	        return 1;
+	    }
+
 
 	/*Conversión de los argumentos de N1 y N2 a cadena de caracteres*/
 	char *endptr;
@@ -90,7 +96,7 @@ int main(char argc, char *argv[]) {
 	long n1 = strtol(argv[1], &endptr, 10);
 	if (errno || *endptr != '\0' || n1 < 0) {
 		fprintf(stderr, "N1 no es válido (%s)", argv[1]);
-		return 0;
+		return 1;
 	}
 
 	/*Conversion de N2*/
@@ -98,7 +104,7 @@ int main(char argc, char *argv[]) {
 	long n2 = strtol(argv[3], &endptr, 10);
 	if (errno || *endptr != '\0' || n1 < 0) {
 		fprintf(stderr, "N1 no es válido (%s)", argv[1]);
-		return 0;
+		return 1;
 	}
 
 	/*Declaración de N1 y N2*/
@@ -113,14 +119,14 @@ int main(char argc, char *argv[]) {
 	if (!leerArchivo(argv[2], N1, &arreglo1)) {
 		free(arreglo1);
 		free(arreglo2);
-		return 0;
+		return 1;
 	}
 
 	/*Lectura de archivo conteniendo el segundo arreglo*/
 	if (!leerArchivo(argv[4], N2, &arreglo2)) {
 		free(arreglo1);
 		free(arreglo2);
-		return 0;
+		return 1;
 	}
 
 	/*Impresión por consola de los contenidos de los archivos*/
@@ -130,7 +136,7 @@ int main(char argc, char *argv[]) {
 	printf("\nArreglo 2:\n");
 	imprimirArreglo(arreglo2, N2);
 
-	/*Creación de Pipe*/
+	/*Creación de Pipe Resultado total*/
 	int fd[2];
 
 	if(pipe(fd) == -1) {
@@ -138,10 +144,25 @@ int main(char argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	pid_t pid_hijo = fork();
-/*	pid_t pid_hijo2 = fork();
-	pid_t pid_grandHijo = fork();
+	/*Creación de Pipe Resultado A
+	int fdA[2];
+
+	if(pipe(fdA) == -1) {
+		perror("PIPE");
+		exit(EXIT_FAILURE);
+	}
+
+	/*Creación de Pipe Resultado B
+	int fdB[2];
+
+	if(pipe(fdB) == -1) {
+		perror("PIPE");
+		exit(EXIT_FAILURE);
+	}
 */
+	pid_t pid_hijo = fork();
+
+
 	if(pid_hijo < 0) {
 		perror("FORK");
 		exit(EXIT_FAILURE);
@@ -163,7 +184,7 @@ int main(char argc, char *argv[]) {
 
 		close(fd[0]); /*Cerrar lectura*/
 		write(fd[1], &sumaT, sizeof(sumaT));/*Escribir resultado*/
-		close(fd[1]); /*Cerrar escritura*/
+		//close(fd[1]); /*Cerrar escritura*/
 
 		/*Creación segundo hijo*/
 		pid_hijo = fork();
@@ -173,15 +194,6 @@ int main(char argc, char *argv[]) {
 		}
 
 		if (pid_hijo != 0) return 0;
-	} else {
-		int resultado;
-		/*Recepción del mensaje en el padre*/
-
-		close(fd[1]);/*Cerrar escritura*/
-		read(fd[0], &resultado, sizeof(resultado));/*Escribir resultado*/
-		close(fd[0]); /*Cerrar lectura*/
-
-		printf("\nResultado Suma total: %d", resultado);
 	}
 
 	//Segundo hijo (suma B de archivo01)
@@ -197,7 +209,7 @@ int main(char argc, char *argv[]) {
 
 		close(fd[0]); /*Cerrar lectura*/
 		write(fd[1], &sumaB, sizeof(sumaB));/*Escribir resultado*/
-		close(fd[1]); /*Cerrar escritura*/
+		//close(fd[1]); /*Cerrar escritura*/
 		/*Creación grand hijo*/
 		pid_hijo = fork();
 		if(pid_hijo == -1) {
@@ -206,15 +218,6 @@ int main(char argc, char *argv[]) {
 		}
 
 		if (pid_hijo != 0) return 0;
-	} else {
-		int resultado;
-		/*Recepción del mensaje en el padre*/
-
-		close(fd[1]);/*Cerrar escritura*/
-		read(fd[0], &resultado, sizeof(resultado));/*Escribir resultado*/
-		close(fd[0]); /*Cerrar lectura*/
-
-		printf("\nResultado Suma B: %d", resultado);
 	}
 
 	//Grand hijo (suma A de archivo01)
@@ -229,20 +232,27 @@ int main(char argc, char *argv[]) {
 
 		close(fd[0]); /*Cerrar lectura*/
 		write(fd[1], &sumaA, sizeof(sumaA));/*Escribir resultado*/
-		close(fd[1]); /*Cerrar escritura*/
+		//close(fd[1]); /*Cerrar escritura*/
 
 		return 0;
-	} else {
-		int resultado;
-		/*Recepción del mensaje en el padre*/
+	}
+	wait(NULL);
+	close(fd[1]);/*Cerrar escritura*/
 
-		close(fd[1]);/*Cerrar escritura*/
-		read(fd[0], &resultado, sizeof(resultado));/*Escribir resultado*/
-		close(fd[0]); /*Cerrar lectura*/
+	int resultado;
+	/*Recepción de los mensajes en el padre*/
+	for (int i = 0; i < 3; i++) {
+		read(fd[0], &resultado, sizeof(resultado));/*leer resultado*/
 
-		printf("\nResultado Suma A: %d", resultado);
+		char *sumType = "Total";
+		if (i == 1) sumType = "A";
+		if (i == 2) sumType = "B";
+		printf("\nResultado Suma %s: %d", sumType, resultado);
 	}
 
-	//printf("\nPID: %d\n", pid_hijo);
-	return 1;
+	close(fd[0]); /*Cerrar lectura*/
+	free(arreglo1);
+	free(arreglo2);
+
+	return 0;
 }
