@@ -17,7 +17,6 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 
 /*Método para la lectura de los archivos conteniendo los arreglos*/
 int leerArchivo(const char *archivo, int N, int **salida) {
@@ -82,10 +81,12 @@ void imprimirArreglo(int *arr, int N) {
 }
 
 int main(char argc, char *argv[]) {
+
+	/*Check para encontrar si los argumentos suficientes están dados*/
 	if (argc < 5) {
 	        fprintf(stderr, "Uso: %s N1 archivo00 N2 archivo01\n", argv[0]);
 	        return 1;
-	    }
+    	}
 
 
 	/*Conversión de los argumentos de N1 y N2 a cadena de caracteres*/
@@ -102,7 +103,7 @@ int main(char argc, char *argv[]) {
 	/*Conversion de N2*/
 	errno = 0;
 	long n2 = strtol(argv[3], &endptr, 10);
-	if (errno || *endptr != '\0' || n1 < 0) {
+	if (errno || *endptr != '\0' || n2 < 0) {
 		fprintf(stderr, "N1 no es válido (%s)", argv[1]);
 		return 1;
 	}
@@ -144,24 +145,8 @@ int main(char argc, char *argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	/*Creación de Pipe Resultado A
-	int fdA[2];
-
-	if(pipe(fdA) == -1) {
-		perror("PIPE");
-		exit(EXIT_FAILURE);
-	}
-
-	/*Creación de Pipe Resultado B
-	int fdB[2];
-
-	if(pipe(fdB) == -1) {
-		perror("PIPE");
-		exit(EXIT_FAILURE);
-	}
-*/
+	/*Creación del primer hijo*/
 	pid_t pid_hijo = fork();
-
 
 	if(pid_hijo < 0) {
 		perror("FORK");
@@ -170,6 +155,7 @@ int main(char argc, char *argv[]) {
 
 	//Primer hijo (suma total desde los dos arreglos)
 	if (pid_hijo == 0) {
+		/*Calculo de la suma*/
 		size_t j;
 		int sumaT = 0;
 		for (j = 0; j < N1; j++) {
@@ -178,50 +164,61 @@ int main(char argc, char *argv[]) {
 		for (j = 0; j < N2; j++) {
 			sumaT += arreglo2[j];
 		}
-		printf("\nSuma T = %d\n", sumaT);
 
 		/*Envio de mensaje al padre*/
 
 		close(fd[0]); /*Cerrar lectura*/
 		write(fd[1], &sumaT, sizeof(sumaT));/*Escribir resultado*/
-		//close(fd[1]); /*Cerrar escritura*/
 
 		/*Creación segundo hijo*/
 		pid_hijo = fork();
 		if(pid_hijo == -1) {
 			perror("FORK");
+			free(arreglo1);
+			free(arreglo2);
 			exit(EXIT_FAILURE);
 		}
 
-		if (pid_hijo != 0) return 0;
+		if (pid_hijo != 0) {
+			free(arreglo1);
+			free(arreglo2);
+			return 0;
+		}
 	}
 
 	//Segundo hijo (suma B de archivo01)
 	if (pid_hijo == 0) {
+		/*Calculo de la suma*/
 		size_t j;
 		int sumaB = 0;
 		for (j = 0; j < N2; j++) {
 			sumaB += arreglo2[j];
 		}
-		printf("\nSuma B = %d\n", sumaB);
 
 		/*Envio de mensaje al padre*/
 
 		close(fd[0]); /*Cerrar lectura*/
 		write(fd[1], &sumaB, sizeof(sumaB));/*Escribir resultado*/
-		//close(fd[1]); /*Cerrar escritura*/
+
 		/*Creación grand hijo*/
 		pid_hijo = fork();
 		if(pid_hijo == -1) {
 			perror("FORK");
+			free(arreglo1);
+			free(arreglo2);
 			exit(EXIT_FAILURE);
 		}
 
-		if (pid_hijo != 0) return 0;
+		if (pid_hijo != 0) {
+			free(arreglo1);
+			free(arreglo2);
+			return 0;
+		}
 	}
 
 	//Grand hijo (suma A de archivo01)
 	if (pid_hijo == 0) {
+		/*Calculo de la suma*/
 		size_t j;
 		int sumaA = 0;
 		for (j = 0; j < N1; j++) {
@@ -232,27 +229,38 @@ int main(char argc, char *argv[]) {
 
 		close(fd[0]); /*Cerrar lectura*/
 		write(fd[1], &sumaA, sizeof(sumaA));/*Escribir resultado*/
-		//close(fd[1]); /*Cerrar escritura*/
+		close(fd[1]);/*Cerrar escritura*/
 
+		/*Liberar Memoria*/
+		free(arreglo1);
+		free(arreglo2);
 		return 0;
 	}
-	wait(NULL);
-	close(fd[1]);/*Cerrar escritura*/
 
+
+	/*Recepción de los mensajes de los hijos en el padre*/
 	int resultado;
-	/*Recepción de los mensajes en el padre*/
-	for (int i = 0; i < 3; i++) {
-		read(fd[0], &resultado, sizeof(resultado));/*leer resultado*/
 
+	for (int i = 0; i < 3; i++) {
+		/*leer resultado*/
+		read(fd[0], &resultado, sizeof(resultado));
+
+		/*Declaración de variable para indicar a cual suma se refiere el print*/
 		char *sumType = "Total";
 		if (i == 1) sumType = "A";
 		if (i == 2) sumType = "B";
+		/*Impresión de resultados*/
 		printf("\nResultado Suma %s: %d", sumType, resultado);
 	}
 
-	close(fd[0]); /*Cerrar lectura*/
+	/*Cerrar lectura*/
+	close(fd[0]);
+
+	/*Liberar Memoria*/
 	free(arreglo1);
 	free(arreglo2);
+
+	printf("\n\nFin del programa\n\n");
 
 	return 0;
 }
